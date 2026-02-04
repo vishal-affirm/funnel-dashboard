@@ -19,14 +19,43 @@ st.markdown("**Term Selection Dropoff Analysis** | Last 30 Days")
 # Snowflake connection
 @st.cache_resource
 def get_snowflake_connection():
-    return snowflake.connector.connect(
-        account=st.secrets["snowflake"]["account"],
-        user=st.secrets["snowflake"]["user"],
-        authenticator="externalbrowser",
-        warehouse="SHARED",
-        database="PROD__US",
-        schema="DBT_ANALYTICS"
-    )
+    # Check if running locally (use browser auth) or cloud (use key-pair)
+    if "private_key" in st.secrets.get("snowflake", {}):
+        # Key-pair auth for Streamlit Cloud
+        import base64
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives import serialization
+        
+        private_key_bytes = st.secrets["snowflake"]["private_key"].encode()
+        private_key = serialization.load_pem_private_key(
+            private_key_bytes,
+            password=None,
+            backend=default_backend()
+        )
+        private_key_bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        
+        return snowflake.connector.connect(
+            account=st.secrets["snowflake"]["account"],
+            user=st.secrets["snowflake"]["user"],
+            private_key=private_key_bytes,
+            warehouse="SHARED",
+            database="PROD__US",
+            schema="DBT_ANALYTICS"
+        )
+    else:
+        # Browser auth for local development
+        return snowflake.connector.connect(
+            account=st.secrets["snowflake"]["account"],
+            user=st.secrets["snowflake"]["user"],
+            authenticator="externalbrowser",
+            warehouse="SHARED",
+            database="PROD__US",
+            schema="DBT_ANALYTICS"
+        )
 
 @st.cache_data(ttl=3600)  # Cache for 1 hour
 def run_query(query):
